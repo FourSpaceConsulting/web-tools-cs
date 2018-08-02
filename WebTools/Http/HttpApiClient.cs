@@ -22,38 +22,30 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 using Fourspace.WebTools.Util;
-using log4net;
 using System;
 using System.Collections.Generic;
 using System.Net.Http;
 using System.Net.Http.Formatting;
-using System.Net.Http.Headers;
 using System.Threading.Tasks;
 
 namespace Fourspace.WebTools.Http
 {
-
     /// <summary>
     /// HTTP client implementation
     /// </summary>
-    public class HttpApiClient : IApiClient, IDisposable
+    public class HttpApiClient : IApiClient
     {
-        private static readonly ILog Logger = LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
         private readonly HttpClient client;
         private readonly IHttpRequestModifier modifier;
         private readonly MediaTypeFormatter mediaTypeFormatter;
-        private bool disposed;
 
-        public HttpApiClient(string baseUri, string mediaType, MediaTypeFormatter mediaTypeFormatter)
+        public HttpApiClient(HttpClient client, MediaTypeFormatter mediaTypeFormatter)
         {
+            this.client = client;
             this.mediaTypeFormatter = mediaTypeFormatter;
-            client = new HttpClient();
-            client.BaseAddress = new Uri(baseUri);
-            client.DefaultRequestHeaders.Accept.Clear();
-            client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue(mediaType));
         }
 
-        public HttpApiClient(string baseUri, string mediaType, MediaTypeFormatter mediaTypeFormatter, IHttpRequestModifier modifier) : this(baseUri, mediaType, mediaTypeFormatter)
+        public HttpApiClient(HttpClient client, MediaTypeFormatter mediaTypeFormatter, IHttpRequestModifier modifier) : this(client, mediaTypeFormatter)
         {
             this.modifier = modifier;
         }
@@ -75,33 +67,24 @@ namespace Fourspace.WebTools.Http
 
         private async Task<R> Send<T, R>(HttpMethod method, string uri, T postData, IDictionary<string, string> parameters)
         {
+            // Create content if needed
+            HttpContent content = CreateContent(method, postData);
+            // bind parameters and send
+            string parameterUri = UriUtil.BindParameters(uri, parameters);
             HttpResponseMessage response = null;
-            HttpContent content = null;
-            try
+            if (modifier != null)
             {
-                // Create content if needed
-                content = CreateContent(method, postData);
-                // bind parameters and send
-                string parameterUri = UriUtil.BindParameters(uri, parameters);
-                if (modifier != null)
-                {
-                    var request = new HttpRequestMessage(method, parameterUri);
-                    request.Content = content;
-                    modifier.ModifyRequest(request, uri, parameters);
-                    response = await client.SendAsync(request).ConfigureAwait(false);
-                }
-                else
-                {
-                    response = await SendAsync(method, parameterUri, content).ConfigureAwait(false);
-                }
-                if (!response.IsSuccessStatusCode) throw new HttpResponseException(response);
-                return await response.Content.ReadAsAsync<R>();
+                var request = new HttpRequestMessage(method, parameterUri);
+                request.Content = content;
+                modifier.ModifyRequest(request, uri, parameters);
+                response = await client.SendAsync(request).ConfigureAwait(false);
             }
-            catch (Exception e)
+            else
             {
-                Logger.Error(e.Message, e);
-                throw;
+                response = await SendAsync(method, parameterUri, content).ConfigureAwait(false);
             }
+            if (!response.IsSuccessStatusCode) throw new HttpResponseException(response);
+            return await response.Content.ReadAsAsync<R>();
         }
 
         private HttpContent CreateContent<T>(HttpMethod method, T postData)
@@ -123,6 +106,7 @@ namespace Fourspace.WebTools.Http
         }
 
         #region disposal
+        private bool disposed;
         /// <summary>
         /// This disposes the object. 
         /// It cannot be used again after this call.
