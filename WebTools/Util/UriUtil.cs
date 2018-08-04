@@ -42,7 +42,18 @@ namespace Fourspace.WebTools.Util
             if (parameters == null) return uri;
             UriTemplate template = new UriTemplate(uri);
             Uri namedUri = template.BindByName(LOCALHOST, parameters);
-            return namedUri.PathAndQuery;
+            return IsAbsolutePath(uri) ? namedUri.PathAndQuery : RemoveAbsolutePath(namedUri.PathAndQuery);
+        }
+
+        /// <summary>
+        /// Determine whether path is absolute
+        /// </summary>
+        /// <param name="path"></param>
+        /// <returns></returns>
+        public static bool IsAbsolutePath(string path)
+        {
+            if (path == null) return false;
+            return (path.Length > 0 && path[0] == UriPathSeparator);
         }
 
         /// <summary>
@@ -58,6 +69,18 @@ namespace Fourspace.WebTools.Util
             return UriPathSeparator + path;
         }
 
+        /// <summary>
+        /// Appends a uri path separator to start of string if not present
+        /// </summary>
+        /// <param name="path"></param>
+        /// <returns></returns>
+        public static string RemoveAbsolutePath(string path)
+        {
+            if (path == null) return null;
+            if (path.Length == 0 || path[0] != UriPathSeparator)
+                return path;
+            return path.Substring(1);
+        }
 
     }
 }
